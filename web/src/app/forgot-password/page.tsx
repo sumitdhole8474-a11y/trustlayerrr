@@ -1,0 +1,371 @@
+"use client";
+
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { motion } from "framer-motion";
+
+export default function ForgotPasswordPage() {
+  const router = useRouter();
+  const [email, setEmail] = useState("");
+  const [otp, setOtp] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [step, setStep] = useState(1); // 1: Email, 2: Verify OTP, 3: New password
+  const [loading, setLoading] = useState(false);
+  const [verifying, setVerifying] = useState(false);
+  const [resendLoading, setResendLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+
+  // Step 1: Send OTP
+  async function handleSendResetOtp() {
+    if (!email.trim()) {
+      setError("Please enter your email");
+      return;
+    }
+
+    setError("");
+    setLoading(true);
+
+    try {
+      const res = await fetch("/api/auth/forgot-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to send reset code");
+      }
+
+      setStep(2);
+      setSuccess("Password reset code sent to your email!");
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // Step 2: Verify OTP
+  async function handleVerifyOtp() {
+    if (otp.length !== 6) {
+      setError("Please enter a 6-digit code");
+      return;
+    }
+
+    setError("");
+    setVerifying(true);
+
+    try {
+      const res = await fetch("/api/auth/verify-reset-otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: email.toLowerCase().trim(),
+          otp: otp.trim(),
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || "Invalid or expired reset code");
+      }
+
+      setStep(3);
+      setSuccess("Reset code verified! Now set your new password.");
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setVerifying(false);
+    }
+  }
+
+  // Step 3: Set new password
+  async function handleResetPassword() {
+    if (!newPassword || !confirmPassword) {
+      setError("Please fill all fields");
+      return;
+    }
+
+    if (newPassword.length < 6) {
+      setError("Password must be at least 6 characters");
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      setError("Passwords don't match");
+      return;
+    }
+
+    setError("");
+    setLoading(true);
+
+    try {
+      const res = await fetch("/api/auth/reset-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: email.toLowerCase().trim(),
+          otp: otp.trim(),
+          newPassword,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to reset password");
+      }
+
+      setSuccess("Password reset successfully! Redirecting to login...");
+      
+      setTimeout(() => {
+        router.push("/login");
+      }, 2000);
+    } catch (err: any) {
+      setError(err.message);
+      setLoading(false);
+    }
+  }
+
+  // Resend OTP
+  async function handleResendOtp() {
+    setResendLoading(true);
+    setError("");
+
+    try {
+      const res = await fetch("/api/auth/forgot-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to resend code");
+      }
+
+      setSuccess("New reset code sent to your email!");
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setResendLoading(false);
+    }
+  }
+
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-900 via-gray-800 to-black p-4">
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="w-full max-w-md bg-gradient-to-br from-gray-800/50 to-gray-900/50 backdrop-blur-sm rounded-2xl p-8 border border-gray-700/50 shadow-2xl"
+      >
+        <div className="text-center mb-8">
+          <h1 className="text-3xl font-bold text-white">
+            {step === 1 ? "Reset Password" : step === 2 ? "Verify Reset Code" : "Set New Password"}
+          </h1>
+          <p className="text-gray-400 mt-2">
+            {step === 1 
+              ? "Enter your email to receive a reset code" 
+              : step === 2
+              ? "Enter the 6-digit code sent to your email"
+              : "Create a new password for your account"}
+          </p>
+          
+          {/* Step indicator */}
+          <div className="flex justify-center mt-4 space-x-2">
+            {[1, 2, 3].map((s) => (
+              <div
+                key={s}
+                className={`h-2 rounded-full transition-all duration-300 ${
+                  s <= step
+                    ? "w-8 bg-blue-500"
+                    : "w-2 bg-gray-700"
+                }`}
+              />
+            ))}
+          </div>
+        </div>
+
+        {error && (
+          <div className="mb-6 p-4 bg-red-500/20 border border-red-500/30 rounded-xl">
+            <p className="text-red-400 text-center text-sm">{error}</p>
+          </div>
+        )}
+
+        {success && (
+          <div className="mb-6 p-4 bg-green-500/20 border border-green-500/30 rounded-xl">
+            <p className="text-green-400 text-center text-sm">{success}</p>
+          </div>
+        )}
+
+        <div className="space-y-6">
+          {/* Email input (always visible but disabled after step 1) */}
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-2">
+              Email Address
+            </label>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="w-full px-4 py-3 bg-gray-700/50 border border-gray-600/50 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
+              placeholder="you@example.com"
+              required
+              disabled={step > 1}
+            />
+            <p className="text-xs text-gray-400 mt-2">
+              Enter the email associated with your account
+            </p>
+          </div>
+
+          {/* Step 1: Send OTP button */}
+          {step === 1 && (
+            <button
+              onClick={handleSendResetOtp}
+              disabled={loading}
+              className="w-full py-3 bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-700 hover:to-blue-600 rounded-xl text-white font-semibold transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-blue-500/20"
+            >
+              {loading ? "Sending Reset Code..." : "Send Reset Code"}
+            </button>
+          )}
+
+          {/* Step 2: Verify OTP */}
+          {step === 2 && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="space-y-4"
+            >
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Reset Code (6-digit)
+                </label>
+                <input
+                  inputMode="numeric"
+                  maxLength={6}
+                  value={otp}
+                  onChange={(e) => setOtp(e.target.value.replace(/\D/g, ""))}
+                  placeholder="123456"
+                  className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white text-center tracking-widest text-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+                <div className="flex justify-between items-center mt-2">
+                  <p className="text-xs text-gray-400">
+                    Check your email (and spam folder) for the code
+                  </p>
+                  <button
+                    onClick={handleResendOtp}
+                    disabled={resendLoading}
+                    className="text-xs text-blue-400 hover:text-blue-300 disabled:opacity-50"
+                  >
+                    {resendLoading ? "Resending..." : "Resend code"}
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={() => {
+                    setStep(1);
+                    setOtp("");
+                  }}
+                  className="flex-1 py-3 bg-gray-700/50 hover:bg-gray-700 rounded-xl text-white transition-colors"
+                >
+                  Back
+                </button>
+                
+                <button
+                  onClick={handleVerifyOtp}
+                  disabled={verifying || otp.length !== 6}
+                  className="flex-1 py-3 bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-700 hover:to-blue-600 rounded-xl text-white font-semibold transition-all duration-200 disabled:opacity-50 shadow-lg shadow-blue-500/20"
+                >
+                  {verifying ? "Verifying..." : "Verify Code"}
+                </button>
+              </div>
+            </motion.div>
+          )}
+
+          {/* Step 3: Set New Password */}
+          {step === 3 && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="space-y-4"
+            >
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  New Password
+                </label>
+                <input
+                  type="password"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  className="w-full px-4 py-3 bg-gray-700/50 border border-gray-600/50 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  placeholder="••••••••"
+                  minLength={6}
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Confirm New Password
+                </label>
+                <input
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  className="w-full px-4 py-3 bg-gray-700/50 border border-gray-600/50 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  placeholder="••••••••"
+                  minLength={6}
+                  required
+                />
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setStep(2)}
+                  className="flex-1 py-3 bg-gray-700/50 hover:bg-gray-700 rounded-xl text-white transition-colors"
+                >
+                  Back
+                </button>
+                
+                <button
+                  onClick={handleResetPassword}
+                  disabled={loading || !newPassword || !confirmPassword}
+                  className="flex-1 py-3 bg-gradient-to-r from-green-600 to-emerald-500 hover:from-green-700 hover:to-emerald-600 rounded-xl text-white font-semibold transition-all duration-200 disabled:opacity-50 shadow-lg shadow-green-500/20"
+                >
+                  {loading ? "Resetting..." : "Reset Password"}
+                </button>
+              </div>
+            </motion.div>
+          )}
+
+          <div className="text-center space-y-4 pt-4 border-t border-gray-700/50">
+            <Link
+              href="/login"
+              className="block text-sm text-blue-400 hover:text-blue-300"
+            >
+              Back to Login
+            </Link>
+            <p className="text-gray-400 text-sm">
+              Don't have an account?{" "}
+              <Link
+                href="/register"
+                className="text-blue-400 hover:text-blue-300 font-medium"
+              >
+                Sign up
+              </Link>
+            </p>
+          </div>
+        </div>
+      </motion.div>
+    </div>
+  );
+}
