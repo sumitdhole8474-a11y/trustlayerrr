@@ -1,16 +1,12 @@
 import NextAuth from "next-auth";
-import CredentialsProvider from "next-auth/providers/credentials";
 import GoogleProvider from "next-auth/providers/google";
-import bcrypt from "bcryptjs";
-import jwt from "jsonwebtoken";
-import User from "@/models/User";
-import { connectDB } from "@/lib/mongodb";
+import CredentialsProvider from "next-auth/providers/credentials";
 
 const handler = NextAuth({
   providers: [
     GoogleProvider({
-      clientId: process.env.GOOGLE_CLIENT_ID!,
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+      clientId: process.env.GOOGLE_CLIENT_ID as string,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET as string,
     }),
 
     CredentialsProvider({
@@ -24,6 +20,11 @@ const handler = NextAuth({
         if (!credentials?.email || !credentials?.password) {
           throw new Error("Missing credentials");
         }
+
+        // 🔑 IMPORTS MOVED INSIDE FUNCTION (VERY IMPORTANT)
+        const { connectDB } = await import("@/lib/mongodb");
+        const User = (await import("@/models/User")).default;
+        const bcrypt = (await import("bcryptjs")).default;
 
         await connectDB();
 
@@ -60,58 +61,47 @@ const handler = NextAuth({
 
   session: {
     strategy: "jwt",
-    maxAge: 30 * 24 * 60 * 60, // 30 days
   },
 
   pages: {
     signIn: "/login",
   },
 
-  secret: process.env.NEXTAUTH_SECRET,
+  secret: process.env.NEXTAUTH_SECRET as string,
 
   callbacks: {
-    async jwt({ token, user, account }) {
-      // Initial sign in
-      if (user && account) {
-        // Generate JWT token for API
-        const jwtSecret = process.env.JWT_SECRET || process.env.NEXTAUTH_SECRET!;
-        
-        const apiToken = jwt.sign(
+    async jwt({ token, user }) {
+      if (user) {
+        const jwtLib = await import("jsonwebtoken");
+
+        const jwtSecret =
+          process.env.JWT_SECRET || process.env.NEXTAUTH_SECRET!;
+
+        const apiToken = jwtLib.sign(
           {
             userId: user.id,
             email: user.email,
             name: user.name,
-            role: user.role || "user",
+            role: (user as any).role || "user",
           },
           jwtSecret,
           { expiresIn: "30d" }
         );
-        
-        // Store in token
+
         token.id = user.id;
-        token.name = user.name;
-        token.email = user.email;
-        token.role = user.role || "user";
+        token.role = (user as any).role || "user";
         token.accessToken = apiToken;
       }
-      
+
       return token;
     },
 
     async session({ session, token }) {
-      // Type-safe assignment
       if (session.user) {
-        session.user = {
-          ...session.user,
-          id: token.id as string,
-          name: token.name as string,
-          email: token.email as string,
-          role: token.role as string,
-        };
-        
-        session.accessToken = token.accessToken as string;
+        session.user.id = token.id as string;
+        session.user.role = token.role as string;
+        (session as any).accessToken = token.accessToken;
       }
-      
       return session;
     },
   },
